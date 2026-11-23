@@ -35,8 +35,8 @@ jobs:
       - name: Gerar pastas android e web
         run: flutter create . --platforms=android,web --project-name noite_quest --org io.github.noitequest
 
-      - name: Nome do app no Android
-        run: sed -i 's/android:label="noite_quest"/android:label="Noite Quest"/' android/app/src/main/AndroidManifest.xml
+      - name: Ajustar Android (nome, notificações e alarmes)
+        run: python3 tool/patch_android.py
 
       - name: Dependências
         run: flutter pub get

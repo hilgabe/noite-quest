@@ -59,6 +59,8 @@ class Settings {
   int offLimit = 180;
   String offEnd = '01:00';
   int bonus = 60;
+  String playTime = '17:30';
+  Map<String, NotifCfg> notif = defaultNotif();
 
   Map<String, dynamic> toJson() => {
         'wake': wake,
@@ -71,6 +73,8 @@ class Settings {
         'offLimit': offLimit,
         'offEnd': offEnd,
         'bonus': bonus,
+        'playTime': playTime,
+        'notif': notif.map((k, v) => MapEntry(k, v.toJson())),
       };
 
   static Settings fromJson(Map<String, dynamic>? j) {
@@ -86,6 +90,16 @@ class Settings {
     s.offLimit = (j['offLimit'] as num?)?.toInt() ?? s.offLimit;
     s.offEnd = j['offEnd'] as String? ?? s.offEnd;
     s.bonus = (j['bonus'] as num?)?.toInt() ?? s.bonus;
+    s.playTime = j['playTime'] as String? ?? s.playTime;
+    final nj = j['notif'];
+    if (nj is Map) {
+      for (final e in nj.entries) {
+        final key = e.key as String;
+        if (s.notif.containsKey(key) && e.value is Map) {
+          s.notif[key] = NotifCfg.fromJson(Map<String, dynamic>.from(e.value as Map), s.notif[key]!);
+        }
+      }
+    }
     return s;
   }
 
@@ -115,6 +129,8 @@ class Night {
   int? bedAt;
   int? wakeAt;
   int? mood;
+  int? arrivedAt;
+  List<LogEntry> log = [];
 
   Night(this.date);
 
@@ -141,6 +157,8 @@ class Night {
         if (bedAt != null) 'bedAt': bedAt,
         if (wakeAt != null) 'wakeAt': wakeAt,
         if (mood != null) 'mood': mood,
+        if (arrivedAt != null) 'arrivedAt': arrivedAt,
+        'log': log.map((e) => e.toJson()).toList(),
       };
 
   static Night fromJson(String k, Map<String, dynamic> j) {
@@ -156,6 +174,8 @@ class Night {
     n.bedAt = (j['bedAt'] as num?)?.toInt();
     n.wakeAt = (j['wakeAt'] as num?)?.toInt();
     n.mood = (j['mood'] as num?)?.toInt();
+    n.arrivedAt = (j['arrivedAt'] as num?)?.toInt();
+    n.log = ((j['log'] as List?) ?? []).map((e) => LogEntry.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     return n;
   }
 }
@@ -336,5 +356,184 @@ class GameState {
     }
     final level = xp ~/ 200 + 1;
     return Progress(xp, stars, streak, level, xp % 200, ranks[math.min(level - 1, ranks.length - 1)]);
+  }
+}
+
+// ---------------- Registro do que aconteceu ----------------
+class LogEntry {
+  final int t;
+  final String kind;
+  final String text;
+  LogEntry(this.t, this.kind, this.text);
+  Map<String, dynamic> toJson() => {'t': t, 'kind': kind, 'text': text};
+  static LogEntry fromJson(Map<String, dynamic> j) =>
+      LogEntry((j['t'] as num).toInt(), j['kind'] as String? ?? 'nota', j['text'] as String? ?? '');
+}
+
+String clock(int ts) => fmt(minOfDay(ts));
+
+/// "20 min antes" / "35 min depois" / "na hora certa", em relação a uma meta.
+String diffText(int minutes, {String before = 'antes', String after = 'depois'}) {
+  final m = minutes.abs();
+  if (m <= 1) return 'na hora certa';
+  final h = m ~/ 60, r = m % 60;
+  final txt = h > 0 ? (r > 0 ? '$h h $r min' : '$h h') : '$m min';
+  return minutes < 0 ? '$txt $before' : '$txt $after';
+}
+
+/// Converte um horário escolhido no relógio para a data certa da noite.
+/// De madrugada (antes das 6h) ou de manhã (acordar) cai no dia seguinte.
+int tsForNight(String k, int hour, int minute, {bool morning = false}) {
+  final base = dateOf(k);
+  final m = hour * 60 + minute;
+  final nextDay = morning || m < 360;
+  return DateTime(base.year, base.month, base.day + (nextDay ? 1 : 0), hour, minute).millisecondsSinceEpoch;
+}
+
+// ---------------- Avisos e alarmes ----------------
+class NotifCfg {
+  bool on;
+  String msg;
+  int min;
+  NotifCfg(this.on, this.msg, [this.min = 0]);
+  Map<String, dynamic> toJson() => {'on': on, 'msg': msg, 'min': min};
+  static NotifCfg fromJson(Map<String, dynamic> j, NotifCfg d) {
+    final m = j['msg'] as String?;
+    return NotifCfg(j['on'] as bool? ?? d.on, (m != null && m.trim().isNotEmpty) ? m : d.msg,
+        (j['min'] as num?)?.toInt() ?? d.min);
+  }
+}
+
+const notifKinds = ['play', 'warn', 'off', 'bed', 'wake', 'log'];
+const notifNames = {
+  'play': 'Hora boa de jogar',
+  'warn': 'Última partida',
+  'off': 'Hora de desligar',
+  'bed': 'Hora de deitar',
+  'wake': 'Despertador',
+  'log': 'Registrar a manhã',
+};
+const notifHelp = {
+  'play': 'Dias de semana, entre o trabalho e a aula.',
+  'warn': 'Minutos antes do horário de desligar.',
+  'off': 'No horário de desligar o jogo.',
+  'bed': 'No horário de deitar.',
+  'wake': 'No horário de acordar, depois de noite de trabalho.',
+  'log': 'Minutos depois do horário máximo de acordar.',
+};
+
+Map<String, NotifCfg> defaultNotif() => {
+      'play': NotifCfg(false, 'Janela de jogo aberta! Joga um pouco antes da aula.'),
+      'warn': NotifCfg(true, 'Última partida! Termina essa e não começa outra.', 10),
+      'off': NotifCfg(true, 'Hora de desligar o jogo. Salva e sai!'),
+      'bed': NotifCfg(true, 'Hora de deitar. Celular longe da cama!'),
+      'wake': NotifCfg(true, 'Bom dia! Hora de acordar.'),
+      'log': NotifCfg(true, 'Como você acordou? Registra no Noite Quest.', 30),
+    };
+
+class Alarm {
+  final int id;
+  final String kind;
+  final DateTime at;
+  final String title;
+  final String body;
+  Alarm(this.id, this.kind, this.at, this.title, this.body);
+}
+
+// ---------------- Saúde do personagem ----------------
+class Health {
+  final int score; // 0 a 100
+  final String mood; // top, good, ok, tired, bad, start
+  final String label;
+  final String speech;
+  final int nights;
+  Health(this.score, this.mood, this.label, this.speech, this.nights);
+}
+
+extension HealthAndAlarms on GameState {
+  int nightHealth(String k) {
+    final n = nights[k]!;
+    final l = limitsFor(k);
+    var p = n.respected == true ? 40 : (n.respected == false ? 10 : 20);
+    if (n.bedAt != null) {
+      final atraso = (n.bedAt! - l.bedline.millisecondsSinceEpoch) / 60000;
+      p += atraso <= 5 ? 30 : (atraso <= 30 ? 20 : (atraso <= 60 ? 10 : 0));
+    } else {
+      p += 10;
+    }
+    if (n.wakeAt != null && typeOf(k) != NightType.folga) {
+      p += wokeOnTime(k) ? 20 : 8;
+    } else {
+      p += 14;
+    }
+    if (n.wakeAt != null && n.bedAt != null) {
+      final h = (n.wakeAt! - n.bedAt!) / 3600000;
+      p += h >= settings.sleepH ? 10 : (h >= settings.sleepH - 1 ? 6 : 0);
+    } else {
+      p += 6;
+    }
+    return p;
+  }
+
+  Health health() {
+    final today = nightKeyNow();
+    final keys = <String>[];
+    for (var i = 0; i <= 7; i++) {
+      final k = addDays(today, -i);
+      final n = nights[k];
+      if (n == null) continue;
+      if (n.respected == null && n.bedAt == null) continue;
+      keys.add(k);
+    }
+    if (keys.isEmpty) {
+      return Health(70, 'start', 'Começando', 'Bora começar! Complete as missões de hoje.', 0);
+    }
+    final score = (keys.map(nightHealth).reduce((a, b) => a + b) / keys.length).round();
+    if (score >= 85) return Health(score, 'top', 'Saudável demais', 'Tô voando! Sono em dia e jogo na medida.', keys.length);
+    if (score >= 65) return Health(score, 'good', 'Bem', 'Tô bem! Bora manter o ritmo.', keys.length);
+    if (score >= 45) return Health(score, 'ok', 'Mais ou menos', 'Tô ok. Dá pra deitar um pouco mais cedo.', keys.length);
+    if (score >= 25) return Health(score, 'tired', 'Cansado', 'Tô cansado… hoje deita no horário?', keys.length);
+    return Health(score, 'bad', 'Mal', 'Tô mal. Preciso de uma noite de sono de verdade.', keys.length);
+  }
+
+  /// Alarmes de uma noite (data k), já com horário e texto.
+  List<Alarm> alarmsFor(String k, int dayIndex) {
+    final l = limitsFor(k);
+    final s = settings;
+    final base = dateOf(k);
+    final out = <Alarm>[];
+    void add(int idx, String kind, DateTime at) {
+      final c = s.notif[kind]!;
+      if (!c.on) return;
+      out.add(Alarm(dayIndex * 10 + idx, kind, at, notifNames[kind]!, '${c.msg} (${fmt(at.hour * 60 + at.minute)})'));
+    }
+
+    final work = l.type != NightType.folga;
+    if (l.type == NightType.util) add(0, 'play', base.add(Duration(minutes: hm(s.playTime))));
+    add(1, 'warn', l.deadline.subtract(Duration(minutes: s.notif['warn']!.min)));
+    add(2, 'off', l.deadline);
+    add(3, 'bed', l.bedline);
+    if (work) {
+      final next = DateTime(base.year, base.month, base.day + 1);
+      add(4, 'wake', next.add(Duration(minutes: hm(s.wake))));
+      add(5, 'log', next.add(Duration(minutes: hm(s.wakeMax) + s.notif['log']!.min)));
+    }
+    return out;
+  }
+
+  /// Próximos alarmes (7 noites), só os que ainda vão acontecer.
+  List<Alarm> upcomingAlarms() {
+    final now = DateTime.now();
+    final k0 = nightKeyNow();
+    final out = <Alarm>[];
+    for (var i = 0; i < 7; i++) {
+      out.addAll(alarmsFor(addDays(k0, i), i).where((a) => a.at.isAfter(now)));
+    }
+    out.sort((a, b) => a.at.compareTo(b.at));
+    return out;
+  }
+
+  void logEvent(String k, String kind, String text, [int? t]) {
+    night(k).log.add(LogEntry(t ?? DateTime.now().millisecondsSinceEpoch, kind, text));
   }
 }

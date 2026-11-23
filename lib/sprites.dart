@@ -1,6 +1,8 @@
 // Pixel art original do Noite Quest, desenhada a partir de mapas de caracteres.
 import 'package:flutter/material.dart';
 
+import 'avatar.dart';
+
 const Map<String, Color> pal = {
   'K': Color(0xFF0B0920),
   'R': Color(0xFFFF5D8F),
@@ -43,6 +45,9 @@ const Map<String, List<String>> spr = {
   'dot': ['........', '........', '...PP...', '..PPPP..', '..PPPP..', '...PP...', '........', '........'],
   'bed': ['K.........', 'K.........', 'KWW.......', 'KWWBBBBBBK', 'KBBBBBBBBK', 'KKKKKKKKKK', 'K........K'],
   'zz': ['KKKKK...', '...K....', '..K.....', 'KKKKK...', '........', '...KKK..', '....K...', '...KKK..'],
+  'heart': ['.rr.rr..', 'rrrrrrr.', 'rrrrrrr.', 'rrrrrrr.', '.rrrrr..', '..rrr...', '...r....'],
+  'heartHalf': ['.rr.PP..', 'rrrr..P.', 'rrrr..P.', 'rrrr..P.', '.rrr.P..', '..rrP...', '...r....'],
+  'heartEmpty': ['.PP.PP..', 'P..P..P.', 'P.....P.', 'P.....P.', '.P...P..', '..P.P...', '...P....'],
   'sun': ['....Y....', '..Y.Y.Y..', '...YYY...', '.YYYYYYY.', 'YYYYYYYYY', '.YYYYYYY.', '...YYY...', '..Y.Y.Y..', '....Y....'],
 };
 
@@ -92,7 +97,8 @@ class Sprite extends StatelessWidget {
 class ScenePainter extends CustomPainter {
   final int frame;
   final bool playing, sleeping, won;
-  ScenePainter(this.frame, {this.playing = false, this.sleeping = false, this.won = false});
+  final String mood;
+  ScenePainter(this.frame, {this.playing = false, this.sleeping = false, this.won = false, this.mood = 'start'});
 
   static final _stars = List.generate(46, (i) => [(i * 73) % 318 + 1, (i * 37) % 70 + 2, i % 5]);
 
@@ -132,18 +138,16 @@ class ScenePainter extends CustomPainter {
     for (var x = 0; x < 320; x += 4) {
       rect(x.toDouble(), 116, 2, 2, const Color(0xFF3EE0A1));
     }
-    drawSprite(canvas, 'hero', 140, 84.0 + frame % 2, 2);
-    if (playing) rect(146, 104, 20, 1, frame.isOdd ? const Color(0xFF56CFFF) : const Color(0xFFFFD23F));
-    if (sleeping) {
-      drawSprite(canvas, 'bed', 104, 102, 2);
-      drawSprite(canvas, 'zz', 176, 70.0 - (frame % 3) * 2, 1);
-    } else if (won) {
-      drawSprite(canvas, 'star', 178, 80.0 - (frame % 2) * 2, 2);
-    }
+    final bob = sleeping ? 0.0 : avatarBob(mood, frame);
+    if (sleeping) drawSprite(canvas, 'bed', 104, 102, 2);
+    final rows = avatarRows(mood, blink: frame % 9 == 0, playing: playing, sleeping: sleeping);
+    drawAvatar(canvas, rows, 144, 64 + bob * 2, 2);
+    drawAvatarFx(canvas, mood, frame, 144, 64 + bob * 2, 2, sleeping: sleeping);
+    if (won && !sleeping) drawSprite(canvas, 'star', 184, 60.0 - (frame % 2) * 2, 2);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(ScenePainter old) =>
-      old.frame != frame || old.playing != playing || old.sleeping != sleeping || old.won != won;
+      old.frame != frame || old.playing != playing || old.sleeping != sleeping || old.won != won || old.mood != mood;
 }
