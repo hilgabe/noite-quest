@@ -1,0 +1,75 @@
+name: Build e publicar
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.24.5'
+          cache: true
+
+      - name: Gerar pastas android e web
+        run: flutter create . --platforms=android,web --project-name noite_quest --org io.github.noitequest
+
+      - name: Nome do app no Android
+        run: sed -i 's/android:label="noite_quest"/android:label="Noite Quest"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Dependências
+        run: flutter pub get
+
+      - name: Ícones
+        run: dart run flutter_launcher_icons
+
+      - name: Build web
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+      - name: Publicar APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk NoiteQuest.apk
+          gh release create "v1.0.${{ github.run_number }}" NoiteQuest.apk \
+            --title "Noite Quest 1.0.${{ github.run_number }}" \
+            --notes "Baixe o arquivo NoiteQuest.apk no celular Android e toque nele para instalar." \
+            --latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
