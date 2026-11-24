@@ -183,11 +183,17 @@ class _SceneViewState extends State<SceneView> {
   }
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-        painter: ScenePainter(frame,
-            playing: widget.playing, sleeping: widget.sleeping, won: widget.won, mood: widget.mood),
-        child: const SizedBox.expand(),
-      );
+  Widget build(BuildContext context) => Stack(children: [
+        Positioned.fill(
+          child: CustomPaint(
+            painter: ScenePainter(frame,
+                playing: widget.playing, sleeping: widget.sleeping, won: widget.won, mood: widget.mood),
+          ),
+        ),
+        Positioned.fill(
+          child: WalkingAvatar(mood: widget.mood, playing: widget.playing, sleeping: widget.sleeping),
+        ),
+      ]);
 }
 
 // ---------------- Cronômetro ----------------
@@ -278,6 +284,9 @@ class _HomeState extends State<Home> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) precacheAvatar(context);
+    });
     gs.load().then((_) {
       setState(() => loaded = true);
       for (final k in notifKinds) {

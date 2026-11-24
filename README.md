@@ -10,6 +10,8 @@ Mini game 8-bit em Flutter para jogar no tempo certo e dormir bem. Cada noite é
 
 Tem XP, níveis, estrelas, sequência de noites e o baú de sábado: cumprindo as noites de segunda a quinta, ganha +60 min no sábado.
 
+O personagem (quadros em `assets/avatar/`) anda pela cena noturna e muda conforme a saúde das últimas noites: pula com brilhos quando está muito bem, anda mais devagar e com sono quando está cansado, e fica parado embaixo de uma nuvem de chuva quando está mal.
+
 ## Como instalar
 
 - **Android:** abra a página de [Releases](../../releases/latest) no celular, baixe o `NoiteQuest.apk` e toque nele para instalar. Na primeira vez, o Android pede para permitir apps de fontes desconhecidas.

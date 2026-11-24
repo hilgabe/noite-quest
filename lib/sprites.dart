@@ -1,8 +1,6 @@
 // Pixel art original do Noite Quest, desenhada a partir de mapas de caracteres.
 import 'package:flutter/material.dart';
 
-import 'avatar.dart';
-
 const Map<String, Color> pal = {
   'K': Color(0xFF0B0920),
   'R': Color(0xFFFF5D8F),
@@ -138,12 +136,8 @@ class ScenePainter extends CustomPainter {
     for (var x = 0; x < 320; x += 4) {
       rect(x.toDouble(), 116, 2, 2, const Color(0xFF3EE0A1));
     }
-    final bob = sleeping ? 0.0 : avatarBob(mood, frame);
-    if (sleeping) drawSprite(canvas, 'bed', 104, 102, 2);
-    final rows = avatarRows(mood, blink: frame % 9 == 0, playing: playing, sleeping: sleeping);
-    drawAvatar(canvas, rows, 144, 64 + bob * 2, 2);
-    drawAvatarFx(canvas, mood, frame, 144, 64 + bob * 2, 2, sleeping: sleeping);
-    if (won && !sleeping) drawSprite(canvas, 'star', 184, 60.0 - (frame % 2) * 2, 2);
+    // o personagem é desenhado por cima, com os quadros de animação (WalkingAvatar)
+    if (won && !sleeping) drawSprite(canvas, 'star', 296, 96.0 - (frame % 2) * 2, 2);
     canvas.restore();
   }
 

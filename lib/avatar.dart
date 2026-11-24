@@ -1,228 +1,199 @@
-// O personagem do jogador em 8-bit: cabelo escuro, óculos pretos, bigode e cavanhaque,
-// casaco azul, camisa preta, calça jeans e tênis branco. Muda de cara conforme a saúde.
+// O personagem do jogador: quadros de caminhada de frente e de lado (assets/avatar).
+// O humor muda a velocidade, a cor e os efeitos em volta (brilhos, sono, nuvem de chuva).
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-const Map<String, Color> avPal = {
-  'H': Color(0xFF2A1F24), // cabelo
-  'h': Color(0xFF4A3A3E), // brilho do cabelo
-  'S': Color(0xFFC58A5C), // pele
-  's': Color(0xFFA06A45), // sombra da pele
-  'l': Color(0xFFD9A070), // luz da pele
-  'G': Color(0xFF15141C), // armação dos óculos
-  'E': Color(0xFFEDE6E2), // branco do olho / reflexo da lente
-  'P': Color(0xFF2A1F24), // pupila
-  'M': Color(0xFF4E3226), // bigode e cavanhaque
-  'm': Color(0xFF8A4A3A), // boca
-  'W': Color(0xFFF4F4F4), // dentes e tênis
-  'w': Color(0xFFC9C9C9), // sola do tênis
-  'J': Color(0xFF2F6FD6), // casaco azul
-  'j': Color(0xFF1F4FA0), // dobra do casaco
-  'T': Color(0xFF17171C), // camisa preta
-  'D': Color(0xFF3F63A3), // jeans
-  'd': Color(0xFF2C4A7D), // costura do jeans
-  'B': Color(0xFF7FD0FF), // lágrima
-  'g': Color(0xFF8D88B8), // controle
-  'y': Color(0xFFFFD23F), // botões do controle
-};
-
-// 16 colunas x 26 linhas
-const List<String> _base = [
-  '....HHHHHHH.....',
-  '...HHHHHhHHH....',
-  '..HHhHHHHHHhH...',
-  '..HHHHHHHHHHH...',
-  '..HlSSSSSSSlH...',
-  '.sSGGGGSGGGGSs..',
-  '.sSGEPGSGPEGSs..', // 6: olhos
-  '..SGllGSGllGS...',
-  '..SSSSSsSSSSS...', // 8: abaixo dos olhos
-  '..SSSMMMMMSSS...',
-  '...SSSmmmSSS....', // 10: boca
-  '....SMMMMMS.....', // 11: queixo
-  '.....SSSSS......',
-  '...JJJTTTJJJ....',
-  '..JJJJTTTJJJJ...',
-  '.JJjJJTTTJJjJJ..',
-  '.JJjJJTTTJJjJJ..',
-  '.SJjJJTTTJJjJS..', // 17: mãos
-  '..JJJJJJJJJJJ...',
-  '...DDDDDDDDD....',
-  '...DDDDdDDDD....',
-  '...DDDD.DDDD....',
-  '...DDDd.dDDD....',
-  '...DDDD.DDDD....',
-  '..WWWWW.WWWWW...',
-  '..wwwww.wwwww...',
+const frontFrames = [
+  'assets/avatar/front_1.png',
+  'assets/avatar/front_2.png',
+  'assets/avatar/front_3.png',
+  'assets/avatar/front_4.png',
+  'assets/avatar/front_5.png',
+  'assets/avatar/front_6.png',
+];
+const walkFrames = [
+  'assets/avatar/walk_1.png',
+  'assets/avatar/walk_2.png',
+  'assets/avatar/walk_3.png',
+  'assets/avatar/walk_4.png',
+  'assets/avatar/walk_5.png',
+  'assets/avatar/walk_6.png',
 ];
 
-/// top: muito bem · good: bem · ok · tired: cansado · bad: mal · start: começando
-List<String> avatarRows(String mood, {bool blink = false, bool playing = false, bool sleeping = false}) {
-  final r = List<String>.from(_base);
-  // olhos
-  if (blink || sleeping || mood == 'tired') {
-    r[6] = '.sSGPPGSGPPGSs..';
-  }
-  if (mood == 'tired' || mood == 'bad') {
-    r[8] = '..SSsSSsSSsSS...'; // olheiras
-  }
-  // boca
-  switch (mood) {
-    case 'top':
-      r[10] = '...SmWWWWWmS....';
-      r[11] = '....SMmmmMS.....';
-      break;
-    case 'good':
-    case 'start':
-      r[10] = '...SSmSSSmSS....';
-      r[11] = '....SMmmmMS.....';
-      break;
-    case 'bad':
-      r[10] = '...SSSmmmSSS....';
-      r[11] = '....SmMMMmS.....';
-      r[8] = '..BSsSSsSSsSS...'; // lágrima
-      break;
-    case 'tired':
-      r[10] = '...SSSSmSSSS....';
-      break;
-    default:
-      break;
-  }
-  if (sleeping) {
-    r[10] = '...SSSSSSSSS....';
-  }
-  if (playing) {
-    r[16] = '.JJjgggggggjJJ..';
-    r[17] = '.SJgyggggyggJS..';
-  }
-  return r;
-}
+/// Proporção de cada quadro (largura / altura).
+const avatarAspect = 324 / 496;
 
-void drawAvatar(Canvas c, List<String> rows, double x, double y, double s) {
-  final p = Paint()..isAntiAlias = false;
-  for (var r = 0; r < rows.length; r++) {
-    for (var col = 0; col < rows[r].length; col++) {
-      final color = avPal[rows[r][col]];
-      if (color == null) continue;
-      p.color = color;
-      c.drawRect(Rect.fromLTWH(x + col * s, y + r * s, s + 0.4, s + 0.4), p);
-    }
+/// Carrega os quadros antes de aparecerem, pra animação não piscar.
+Future<void> precacheAvatar(BuildContext context) async {
+  for (final f in [...frontFrames, ...walkFrames]) {
+    await precacheImage(AssetImage(f), context);
   }
 }
 
-/// Deslocamento vertical da animação para cada humor.
-double avatarBob(String mood, int frame) {
+/// Milissegundos por quadro em cada humor (0 = parado).
+int avatarFrameMs(String mood, {bool sleeping = false}) {
+  if (sleeping) return 0;
   switch (mood) {
     case 'top':
-      const jump = [0, -3, -6, -3, 0, 0];
-      return jump[frame % jump.length].toDouble();
+      return 110;
     case 'good':
     case 'start':
-      return (frame % 4 < 2) ? 0 : -1;
+      return 150;
     case 'ok':
-      return (frame % 6 < 3) ? 0 : -1;
+      return 210;
     case 'tired':
-      return (frame % 8 < 4) ? 0 : 1;
+      return 360;
     default:
-      return 1;
+      return 0; // mal: fica parado
   }
 }
 
-/// Efeitos em volta do personagem (brilhos, nuvem de chuva, Zzz).
-void drawAvatarFx(Canvas c, String mood, int frame, double x, double y, double s, {bool sleeping = false}) {
-  final p = Paint()..isAntiAlias = false;
-  void px(double cx, double cy, Color col, [double w = 1, double h = 1]) {
-    p.color = col;
-    c.drawRect(Rect.fromLTWH(x + cx * s, y + cy * s, w * s, h * s), p);
-  }
-
+/// Filtro de cor: cansado fica mais apagado, mal fica quase sem cor.
+ColorFilter? avatarFilter(String mood, {bool sleeping = false}) {
   if (sleeping) {
-    final o = (frame % 3).toDouble();
-    const z = Color(0xFFF7F3FF);
-    px(15, -2 - o, z, 3, 1);
-    px(16, -1 - o, z);
-    px(15, 0 - o, z, 3, 1);
-    return;
-  }
-  if (mood == 'top') {
-    const gold = Color(0xFFFFD23F);
-    final spots = [
-      [-3.0, 2.0], [17.0, 4.0], [-2.0, 12.0], [18.0, 14.0], [16.0, -1.0], [-4.0, 7.0],
-    ];
-    for (var i = 0; i < spots.length; i++) {
-      if ((frame + i) % 3 == 0) continue;
-      final sx = spots[i][0], sy = spots[i][1];
-      px(sx, sy - 1, gold);
-      px(sx - 1, sy, gold, 3, 1);
-      px(sx, sy + 1, gold);
-    }
-  }
-  if (mood == 'bad') {
-    const cloud = Color(0xFF8D88B8);
-    const dark = Color(0xFF5B54A8);
-    px(3, -7, cloud, 10, 2);
-    px(2, -6, cloud, 12, 2);
-    px(4, -8, dark, 4, 1);
-    px(9, -8, dark, 3, 1);
-    const drop = Color(0xFF7FD0FF);
-    for (var i = 0; i < 4; i++) {
-      final dx = 4.0 + i * 3;
-      final dy = -3.0 + ((frame + i) % 3);
-      px(dx, dy, drop);
-    }
+    return const ColorFilter.matrix([
+      0.6, 0, 0, 0, 0, //
+      0, 0.6, 0, 0, 0,
+      0, 0, 0.75, 0, 0,
+      0, 0, 0, 1, 0,
+    ]);
   }
   if (mood == 'tired') {
-    const z = Color(0xFFB3ACDF);
-    final o = (frame % 4).toDouble();
-    px(14, -1 - o, z, 2, 1);
+    return const ColorFilter.matrix([
+      0.8, 0.05, 0.05, 0, 0, //
+      0.05, 0.8, 0.05, 0, 0,
+      0.05, 0.05, 0.85, 0, 0,
+      0, 0, 0, 1, 0,
+    ]);
   }
+  if (mood == 'bad') {
+    return const ColorFilter.matrix([
+      0.45, 0.35, 0.12, 0, 0, //
+      0.25, 0.55, 0.12, 0, 0,
+      0.25, 0.35, 0.4, 0, 10,
+      0, 0, 0, 1, 0,
+    ]);
+  }
+  return null;
 }
 
-class _AvatarPainter extends CustomPainter {
+/// Pulinho do humor "muito bem" (em fração da altura).
+double avatarHop(String mood, int frame) {
+  if (mood != 'top') return 0;
+  const hop = [0.0, -0.02, -0.035, -0.02, 0.0, 0.0];
+  return hop[frame % hop.length];
+}
+
+/// Efeitos desenhados por cima do personagem.
+class AvatarFxPainter extends CustomPainter {
   final String mood;
   final int frame;
-  final bool playing, sleeping;
-  _AvatarPainter(this.mood, this.frame, this.playing, this.sleeping);
+  final bool sleeping;
+  final bool playing;
+  AvatarFxPainter(this.mood, this.frame, {this.sleeping = false, this.playing = false});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // área lógica de 26 x 36 px: personagem 16 x 26 no meio, com espaço para efeitos
-    final s = math.min(size.width / 26, size.height / 36);
-    final ox = (size.width - 26 * s) / 2 + 5 * s;
-    final oy = (size.height - 36 * s) / 2 + 9 * s;
-    final blink = frame % 14 == 0;
-    final rows = avatarRows(mood, blink: blink, playing: playing, sleeping: sleeping);
-    final bob = sleeping ? 0.0 : avatarBob(mood, frame);
-    // sombra no chão
-    final sh = Paint()..color = const Color(0x55000000);
-    canvas.drawRect(Rect.fromLTWH(ox + 2 * s, oy + 26 * s, 12 * s, 1 * s), sh);
-    drawAvatar(canvas, rows, ox, oy + bob * s, s);
-    drawAvatarFx(canvas, mood, frame, ox, oy + bob * s, s, sleeping: sleeping);
+    final u = size.height / 64; // "pixel" do efeito
+    final p = Paint()..isAntiAlias = false;
+    void px(double x, double y, Color c, [double w = 1, double h = 1]) {
+      p.color = c;
+      canvas.drawRect(Rect.fromLTWH(x * u, y * u, w * u, h * u), p);
+    }
+
+    final cols = size.width / u;
+    if (sleeping || mood == 'tired') {
+      const z = Color(0xFFF7F3FF);
+      final rise = (frame % 6).toDouble();
+      final x = cols * 0.68;
+      final y = 6 - rise;
+      // letra Z em pixels
+      px(x, y, z, 4, 1);
+      px(x + 2, y + 1, z);
+      px(x + 1, y + 2, z);
+      px(x, y + 3, z, 4, 1);
+      if (sleeping) {
+        px(x + 5, y - 4, z, 3, 1);
+        px(x + 6, y - 3, z);
+        px(x + 5, y - 2, z, 3, 1);
+      }
+    }
+    if (mood == 'top' && !sleeping) {
+      const gold = Color(0xFFFFD23F);
+      final spots = [
+        [0.08, 0.18], [0.86, 0.12], [0.04, 0.5], [0.9, 0.45], [0.8, 0.78], [0.12, 0.8],
+      ];
+      for (var i = 0; i < spots.length; i++) {
+        if ((frame + i) % 3 == 0) continue;
+        final sx = spots[i][0] * cols, sy = spots[i][1] * 64;
+        px(sx, sy - 1, gold);
+        px(sx - 1, sy, gold, 3, 1);
+        px(sx, sy + 1, gold);
+      }
+    }
+    if (mood == 'bad' && !sleeping) {
+      const cloud = Color(0xFF8D88B8);
+      const dark = Color(0xFF5B54A8);
+      const drop = Color(0xFF7FD0FF);
+      final cx = cols / 2 - 8;
+      px(cx + 2, 0, cloud, 12, 2);
+      px(cx, 1.5, cloud, 16, 3);
+      px(cx + 3, 4.5, dark, 10, 1);
+      for (var i = 0; i < 5; i++) {
+        final dy = ((frame + i * 2) % 4) * 1.5;
+        px(cx + 1.5 + i * 3.2, 6 + dy, drop, 1, 2);
+      }
+    }
+    if (playing && !sleeping) {
+      // controle na mão
+      const k = Color(0xFF8D88B8);
+      const y = Color(0xFFFFD23F);
+      final x = cols / 2 - 4;
+      px(x, 30, k, 8, 3);
+      px(x - 1, 31, k, 1, 3);
+      px(x + 8, 31, k, 1, 3);
+      px(x + 1, 31, y);
+      px(x + 6, 31, const Color(0xFFFF5A5A));
+    }
   }
 
   @override
-  bool shouldRepaint(_AvatarPainter o) =>
-      o.mood != mood || o.frame != frame || o.playing != playing || o.sleeping != sleeping;
+  bool shouldRepaint(AvatarFxPainter o) =>
+      o.mood != mood || o.frame != frame || o.sleeping != sleeping || o.playing != playing;
 }
 
+/// Personagem parado no lugar, de frente (cartão "Meu personagem" e alarmes).
 class AvatarView extends StatefulWidget {
   final String mood;
   final bool playing, sleeping;
-  final double size;
-  const AvatarView({super.key, required this.mood, this.playing = false, this.sleeping = false, this.size = 150});
+  final double size; // altura
+  const AvatarView({super.key, required this.mood, this.playing = false, this.sleeping = false, this.size = 170});
   @override
   State<AvatarView> createState() => _AvatarViewState();
 }
 
 class _AvatarViewState extends State<AvatarView> {
-  int frame = 0;
+  int frame = 1;
   Timer? t;
+
   @override
   void initState() {
     super.initState();
-    t = Timer.periodic(const Duration(milliseconds: 220), (_) => setState(() => frame++));
+    _start();
+  }
+
+  @override
+  void didUpdateWidget(AvatarView old) {
+    super.didUpdateWidget(old);
+    if (old.mood != widget.mood || old.sleeping != widget.sleeping) _start();
+  }
+
+  void _start() {
+    t?.cancel();
+    final ms = avatarFrameMs(widget.mood, sleeping: widget.sleeping);
+    // mesmo parado, os efeitos (chuva, Zzz) continuam se mexendo
+    t = Timer.periodic(Duration(milliseconds: ms == 0 ? 260 : ms), (_) => setState(() => frame++));
   }
 
   @override
@@ -232,9 +203,121 @@ class _AvatarViewState extends State<AvatarView> {
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: widget.size * 26 / 36,
-        height: widget.size,
-        child: CustomPaint(painter: _AvatarPainter(widget.mood, frame, widget.playing, widget.sleeping)),
-      );
+  Widget build(BuildContext context) {
+    final moving = avatarFrameMs(widget.mood, sleeping: widget.sleeping) > 0;
+    final idx = moving ? frame % frontFrames.length : 1;
+    final h = widget.size;
+    final w = h * avatarAspect;
+    Widget img = Image.asset(frontFrames[idx],
+        width: w, height: h, fit: BoxFit.contain, filterQuality: FilterQuality.none, gaplessPlayback: true);
+    final f = avatarFilter(widget.mood, sleeping: widget.sleeping);
+    if (f != null) img = ColorFiltered(colorFilter: f, child: img);
+    return SizedBox(
+      width: w + h * 0.25,
+      height: h,
+      child: Stack(clipBehavior: Clip.none, alignment: Alignment.bottomCenter, children: [
+        Positioned(
+          bottom: 2,
+          child: Container(width: w * 0.7, height: h * 0.03, color: const Color(0x55000000)),
+        ),
+        Transform.translate(offset: Offset(0, avatarHop(widget.mood, frame) * h), child: img),
+        Positioned.fill(
+          child: CustomPaint(
+              painter: AvatarFxPainter(widget.mood, frame, sleeping: widget.sleeping, playing: widget.playing)),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Personagem andando pela cena noturna, de um lado pro outro.
+class WalkingAvatar extends StatefulWidget {
+  final String mood;
+  final bool playing, sleeping;
+  const WalkingAvatar({super.key, required this.mood, this.playing = false, this.sleeping = false});
+  @override
+  State<WalkingAvatar> createState() => _WalkingAvatarState();
+}
+
+class _WalkingAvatarState extends State<WalkingAvatar> {
+  int frame = 0;
+  double x = 0.45; // posição (0 a 1)
+  int dir = 1;
+  Timer? t;
+
+  bool get standing => widget.sleeping || widget.playing || widget.mood == 'bad';
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  @override
+  void didUpdateWidget(WalkingAvatar old) {
+    super.didUpdateWidget(old);
+    if (old.mood != widget.mood || old.sleeping != widget.sleeping || old.playing != widget.playing) _start();
+  }
+
+  void _start() {
+    t?.cancel();
+    final ms = avatarFrameMs(widget.mood, sleeping: widget.sleeping);
+    t = Timer.periodic(Duration(milliseconds: ms == 0 ? 260 : ms), (_) {
+      setState(() {
+        frame++;
+        if (!standing) {
+          final step = widget.mood == 'top' ? 0.018 : (widget.mood == 'tired' ? 0.006 : 0.011);
+          x += step * dir;
+          if (x > 0.78) {
+            x = 0.78;
+            dir = -1;
+          } else if (x < 0.12) {
+            x = 0.12;
+            dir = 1;
+          }
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    t?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (ctx, c) {
+      final h = c.maxHeight * 0.66;
+      final w = h * avatarAspect;
+      final ground = c.maxHeight * (116 / 130);
+      final left = (c.maxWidth - w) * x;
+      final frames = standing ? frontFrames : walkFrames;
+      final idx = standing ? (widget.playing ? frame % frontFrames.length : 1) : frame % walkFrames.length;
+      Widget img = Image.asset(frames[idx],
+          width: w, height: h, fit: BoxFit.contain, filterQuality: FilterQuality.none, gaplessPlayback: true);
+      final f = avatarFilter(widget.mood, sleeping: widget.sleeping);
+      if (f != null) img = ColorFiltered(colorFilter: f, child: img);
+      if (!standing && dir < 0) {
+        img = Transform(alignment: Alignment.center, transform: Matrix4.diagonal3Values(-1, 1, 1), child: img);
+      }
+      final hop = avatarHop(widget.mood, frame) * h;
+      return Stack(children: [
+        Positioned(
+          left: left,
+          top: ground - h + hop,
+          width: w,
+          height: h,
+          child: Stack(children: [
+            img,
+            Positioned.fill(
+              child: CustomPaint(
+                  painter: AvatarFxPainter(widget.mood, frame, sleeping: widget.sleeping, playing: widget.playing)),
+            ),
+          ]),
+        ),
+      ]);
+    });
+  }
 }
